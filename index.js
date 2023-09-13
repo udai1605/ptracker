@@ -5,10 +5,15 @@ app.use(express.json());
 const cors = require("cors");
 require("dotenv").config();
 const router = require("./routes");
+const bodyParser = require("body-parser");
+const path = require('path');
 // const MONGOURL = process.env.MONGOURL;
 // const PORT = process.env.PORT;
 
-mongoose.connect(process.env.MONGOURL, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(process.env.MONGOURL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
 mongoose.connection.on("connected", () => {
   console.log("Connected to Mongo Server");
@@ -19,6 +24,14 @@ mongoose.connection.on("error", (err) => {
 });
 
 app.use(cors());
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(express.static(path.resolve(__dirname, "./", "build")));
+
+app.get("/", function (req, res, next) {
+  res.sendFile(path.resolve(__dirname, "./", "build/index.html"));
+});
+
 app.use("/api", router);
 
 app.get("/ping", async (req, res, next) => {
