@@ -28,9 +28,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(express.static(path.resolve(__dirname, "./", "build")));
 
-app.get("/", function (req, res, next) {
-  res.sendFile(path.resolve(__dirname, "./", "build/index.html"));
-});
+
 
 app.use("/api", router);
 
@@ -42,6 +40,9 @@ app.get("/ping", async (req, res, next) => {
   } catch (e) {
     next(e);
   }
+});
+app.get("*", function (req, res, next) {
+  res.sendFile(path.resolve(__dirname, "./", "build/index.html"));
 });
 
 app.listen(process.env.PORT, function () {

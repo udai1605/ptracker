@@ -60,6 +60,30 @@ module.exports = {
       next(e);
     }
   },
+  // ... (rest of your code)
+
+  deleteTimeStamp: async (req, res, next) => {
+    try {
+      const { _id } = req.params; // Extracting the _id from the request parameters
+
+      // Using the deleteOne() function from mongoose to delete a specific document by _id
+      timeModel.deleteOne({ _id: _id }, (err) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ message: "Unable to delete timestamp" });
+        }
+
+        // Successfully deleted
+        return res.status(200).json({ message: "Timestamp successfully deleted" });
+      });
+
+    } catch (e) {
+      next(e);
+    }
+  },
+  
+// ... (rest of your code)
+
   //get the list of times from timeModel and get the details of parttime by using the parttime_id in timeModel which is referencing parttimeModel in mongoose,nodejs
   getallTimeStampById: async (req, res, next) => {
     try {
