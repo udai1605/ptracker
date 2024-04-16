@@ -23,7 +23,7 @@ const timeSchema = new mongoose.Schema(
       required: true,
     },
     shift_hours: {
-      type: mongoose.Schema.Types.Decimal128,
+      type: Number,
       required: true,
     },
     parttime_id: {
@@ -33,12 +33,12 @@ const timeSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    toJSON: {
-      transform: (doc, ret) => {
-        ret.shift_hours = parseFloat(ret.shift_hours);
-        return ret;
-      },
-    },
+    // toJSON: {
+    //   transform: (doc, ret) => {
+    //     ret.shift_hours = parseFloat(ret.shift_hours);
+    //     return ret;
+    //   },
+    // },
   }
 );
 

@@ -7,9 +7,11 @@ require("dotenv").config();
 const router = require("./routes");
 const bodyParser = require("body-parser");
 const path = require('path');
+const job = require("./cron")
 // const MONGOURL = process.env.MONGOURL;
 // const PORT = process.env.PORT;
 
+job.start();
 mongoose.connect(process.env.MONGOURL, {
   useNewUrlParser: true,
   useUnifiedTopology: true,

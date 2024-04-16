@@ -1,5 +1,8 @@
 const timeModel = require("../models/timeModel");
-
+const generatePDF = require("../utils/generatePDF")
+const path = require('path');
+const mongoose = require("mongoose");
+const fs = require('fs');
 module.exports = {
   addTimeStamp: async (req, res, next) => {
     try {
@@ -36,6 +39,60 @@ module.exports = {
       next(e);
     }
   },
+  shiftHoursScript: async (req, res) => {
+    try {
+      // Get all entries from timeModel
+      const entries = await timeModel.find();
+
+      // Array to store bulk update operations
+      const bulkUpdateOperations = [];
+      const getTimeDifference = (shiftDate, startTime, endTime) => {
+        // const shiftDate_date = shiftDate.split("T")[0]
+        const startDate = new Date(startTime);
+        const endDate = new Date(endTime);
+
+        // If the shift ends on the next day, add 1 day to the end date
+        if (endDate < startDate) {
+          endDate.setDate(endDate.getDate() + 1);
+        }
+
+        const timeDifferenceInMilliseconds = endDate - startDate;
+        const hours = Math.floor(timeDifferenceInMilliseconds / (1000 * 60 * 60));
+        const minutes = Math.floor(
+          (timeDifferenceInMilliseconds % (1000 * 60 * 60)) / (1000 * 60)
+        );
+
+        return `${hours}:${minutes < 10 ? "0" : ""}${minutes}`;
+      };
+      const timeToDecimal = (time) => {
+        const [hours, minutes] = time?.split(":").map(Number);
+        return hours + minutes / 60;
+      };
+      // Process each entry to calculate and update shift_hours
+      entries.forEach(entry => {
+        const { date, start_time, end_time } = entry;
+
+        // Calculate shift_hours using getTimeDifference function
+        const shiftHours = getTimeDifference(date, start_time, end_time);
+
+        // Prepare update operation for the current entry
+        bulkUpdateOperations.push({
+          updateOne: {
+            filter: { _id: entry._id }, // Filter by document ID
+            update: { $set: { shift_hours: timeToDecimal(shiftHours) } }, // Set the new value of shift_hours
+          },
+        });
+      });
+
+      // Execute bulk update operations
+      await timeModel.bulkWrite(bulkUpdateOperations);
+
+      res.json({ message: 'Shift hours updated successfully' });
+    } catch (error) {
+      console.error('Error updating shift hours:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  },
   editTimeStamp: async (req, res, next) => {
     try {
       const { _id } = req.params;
@@ -70,82 +127,284 @@ module.exports = {
       timeModel.deleteOne({ _id: _id }, (err) => {
         if (err) {
           console.log(err);
-          return res.status(500).json({ message: "Unable to delete timestamp" });
+          return res
+            .status(500)
+            .json({ message: "Unable to delete timestamp" });
         }
 
         // Successfully deleted
-        return res.status(200).json({ message: "Timestamp successfully deleted" });
+        return res
+          .status(200)
+          .json({ message: "Timestamp successfully deleted" });
       });
-
     } catch (e) {
       next(e);
     }
   },
-  
-// ... (rest of your code)
 
+  // fetchTimeStamps: async (
+  //   user_id,
+  //   parttime_id,
+  //   startDate,
+  //   endDate,
+  //   page = 1,
+  //   limit = 10
+  // ) => {
+  //   const countQuery = { user_id };
+  //   const findQuery = { user_id };
+
+  //   if (parttime_id) {
+  //     countQuery.parttime_id = parttime_id;
+  //     findQuery.parttime_id = parttime_id;
+  //   }
+
+  //   if (startDate && endDate) {
+  //     const start = new Date(startDate);
+  //     const end = new Date(endDate);
+  //     countQuery.date = { $gte: start, $lte: end };
+  //     findQuery.date = { $gte: start, $lte: end };
+  //   }
+
+  //   const count = await timeModel.countDocuments(countQuery);
+  //   const entries = await timeModel
+  //     .find(findQuery)
+  //     .populate({
+  //       path: "parttime_id",
+  //       select: "part_time_name pay_rate_history",
+  //     })
+  //     .sort({ date: -1 })
+  //     .skip((page - 1) * limit)
+  //     .limit(limit)
+  //     .exec();
+
+  //   let totalHours = 0;
+  //   let totalPay = 0;
+  //   let companyName = "";
+
+  //   entries.forEach((entry, index) => {
+  //     const hours = parseFloat(entry?.shift_hours);
+  //     let partime = entry.parttime_id
+  //     const pay = hours * entry?.parttime_id?.pay_per;
+  //     console.log(partime,partime.hasOwnProperty("pay_per"),partime.pay_per)
+  //     totalHours += hours;
+  //     totalPay += pay;
+  //     if (index === 0) {
+  //       companyName = entry?.parttime_id?.part_time_name
+  //       pay_per_hour = entry?.parttime_id?.pay_per
+  //     }
+  //   });
+
+  //   return {
+  //     shifts: entries,
+  //     totalPay: totalPay,
+  //     totalHours: totalHours,
+  //     currentPage: page,
+  //     companyName: companyName,
+  //     pay_per_hour: 2,
+  //     totalPages: Math.ceil(count / limit),
+  //     count: count,
+  //     startDate: startDate ? startDate : null,
+  //     endDate: endDate ? endDate : null,
+  //   };
+  // },
+  fetchTimeStamps: async (
+    user_id,
+    parttime_id,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10
+  ) => {
+    try {
+      // Pipeline stages for the aggregation
+      const pipeline = [];
+
+      // Match stage to filter by user_id and optional parttime_id, startDate, endDate
+      const matchStage = {
+        $match: {
+          user_id: mongoose.Types.ObjectId(user_id),
+        },
+      };
+
+      if (parttime_id) {
+        matchStage.$match.parttime_id = mongoose.Types.ObjectId(parttime_id);
+      }
+
+      if (startDate && endDate) {
+        matchStage.$match.date = {
+          $gte: new Date(startDate),
+          $lte: new Date(endDate),
+        };
+      }
+
+      pipeline.push(matchStage);
+
+      pipeline.push({
+        $lookup: {
+          from: 'parttimes',
+          localField: 'parttime_id',
+          foreignField: '_id',
+          as: 'parttimeDetails',
+        },
+      });
+      pipeline.push({ $unwind: '$parttimeDetails' });
+      pipeline.push({
+        $project: {
+          _id: 1,
+          user_id: 1,
+          date: 1,
+          location: 1,
+          start_time: 1,
+          shift_hours: 1,
+          end_time: 1,
+          part_time_name: '$parttimeDetails.part_time_name',
+          pay_rate_history: '$parttimeDetails.pay_rate_history',
+          pay_per_hour: {
+            $let: {
+              vars: {
+                sortedHistory: {
+                  $filter: {
+                    input: '$parttimeDetails.pay_rate_history',
+                    as: 'history',
+                    cond: {
+                      $lte: ['$$history.effective_date', '$date'],
+                    },
+                  },
+                },
+              },
+              in: {
+                $arrayElemAt: [
+                  '$$sortedHistory.pay_per_hour',
+                  -1,
+                ],
+              },
+            },
+          },
+          // pay_per_hour: {
+          //   $let: {
+          //     vars: {
+          //       sortedHistory: {
+          //         $map: {
+          //           input: '$parttimeDetails.pay_rate_history',
+          //           as: 'history',
+          //           in: {
+          //             $cond: [
+          //               { $lte: ['$$history.effective_date', '$date'] },
+          //               '$$history.pay_per_hour',
+          //               null,
+          //             ],
+          //           },
+          //         },
+          //       },
+          //     },
+          //     in: {
+          //       $arrayElemAt: [
+          //         { $filter: { input: '$$sortedHistory', cond: { $ne: ['$$this', null] } } },
+          //         0,
+          //       ],
+          //     },
+          //   },
+          // },
+          // total_pay: { $multiply: ['$shift_hours', { $toDouble: '$pay_per_hour' }] },
+        },
+      });
+      pipeline.push({
+        $set: {
+          total_shift_pay: {
+            $multiply: [
+              { $toDouble: '$shift_hours' }, // Convert shift_hours to double for multiplication
+              '$pay_per_hour', // Use pay_per_hour as calculated above
+            ],
+          },
+        },
+      });
+      pipeline.push({ $sort: { date: -1 } });
+      // Skip and Limit stages for pagination
+      pipeline.push({ $skip: (page - 1) * limit });
+      pipeline.push({ $limit: limit });
+
+      // Execute the aggregation pipeline
+      const result = await timeModel.aggregate(pipeline);
+
+      // Count total documents (for pagination)
+      const totalCount = await timeModel.countDocuments(matchStage.$match);
+
+      return {
+        shifts: result,
+        totalPay: result.reduce((total, entry) => total + parseFloat(entry.total_shift_pay), 0),
+        totalHours: result.reduce((total, entry) => total + parseFloat(entry.shift_hours), 0),
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        count: totalCount,
+        startDate: startDate || null,
+        endDate: endDate || null,
+      };
+    } catch (error) {
+      console.error('Error fetching time stamps:', error);
+      throw error;
+    }
+  },
   //get the list of times from timeModel and get the details of parttime by using the parttime_id in timeModel which is referencing parttimeModel in mongoose,nodejs
   getallTimeStampById: async (req, res, next) => {
     try {
       const { user_id } = req.params;
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10; // Default limit is 10
-
       const { parttime_id, startDate, endDate } = req.query;
-
-      const countQuery = { user_id: user_id };
-      const findQuery = { user_id: user_id };
-
-      if (parttime_id) {
-        countQuery.parttime_id = parttime_id;
-        findQuery.parttime_id = parttime_id;
-      }
-
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        countQuery.date = { $gte: start, $lte: end };
-        findQuery.date = { $gte: start, $lte: end };
-      }
-
-      const count = await timeModel.countDocuments(countQuery);
-
-      const entries = await timeModel
-        .find(findQuery)
-        .populate({
-          path: "parttime_id",
-          select: "pay_per_hour part_time_name",
-        })
-        .sort({ date: -1 }) // Sort by shift_date in descending order
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .exec();
-
-      if (entries.length > 0) {
-        let totalHours = 0;
-        let totalPay = 0;
-        entries.forEach((entry) => {
-          let hours = parseFloat(entry?.shift_hours);
-          let pay = hours * parseFloat(entry?.parttime_id?.pay_per_hour);
-          totalHours += hours;
-          totalPay += pay;
-        });
-
-        res.status(200).json({
-          shifts: entries,
-          totalPay: totalPay,
-          totalHours: totalHours,
-          currentPage: page,
-          totalPages: Math.ceil(count / limit),
-          count: count,
-          startDate: startDate ? startDate : null,
-          endDate: endDate ? endDate : null,
-        });
+      const data = await module.exports.fetchTimeStamps(
+        user_id,
+        parttime_id,
+        startDate,
+        endDate,
+        page,
+        limit
+      );
+      if (data.shifts.length > 0) {
+        res.status(200).json(data);
       } else {
         res.status(200).json({ message: "No shifts found" });
       }
     } catch (e) {
       next(e);
+    }
+  },
+  downloadPdfById: async (req, res, next) => {
+    try {
+      const { user_id } = req.params;
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10; // Default limit is 10
+      const { parttime_id, startDate, endDate, companyFilter } = req.query;
+      const data = await module.exports.fetchTimeStamps(
+        user_id,
+        parttime_id,
+        startDate,
+        endDate,
+        page,
+        limit
+      );
+      data.companyFilter = companyFilter === "true" ? true : false
+      // console.log(data)
+      // Define the desired output file path
+      const outputPath = path.join(__dirname, `shiftReport${new Date().toISOString().replace(/:/g, '-')}.pdf`);;
+
+      // Generate PDF
+      await generatePDF(data, outputPath);
+
+      // Send the PDF file in response
+      res.sendFile(outputPath, (err) => {
+        if (err) {
+          console.log(err)
+          res.status(500).send("Error sending PDF");
+        } else {
+          // Optionally delete the file after sending to avoid clutter
+          fs.unlink(outputPath, (unlinkErr) => {
+            if (unlinkErr) console.log("Error deleting PDF file:", unlinkErr);
+          });
+        }
+      });
+    } catch (error) {
+      console.log(error)
+      res.status(500).send("Error generating PDF");
     }
   },
 };
