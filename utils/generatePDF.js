@@ -310,8 +310,11 @@ const createInvoice = (data, outputPath) => {
       return "$" + (cents / 100).toFixed(2);
     }
     function formatTime(timeString) {
-      const date = new Date(timeString);
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const [hours, minutes] = timeString.split(':').map(Number);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const hours12 = hours % 12 || 12; // Convert 0 to 12 for 12-hour format
+      const time12 = `${hours12.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${period}`;
+      return time12;
     };
     function formatDate(date) {
       date = new Date(date)

@@ -22,6 +22,14 @@ const timeSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    start_time_new: {
+      type: String,
+      required: true,
+    },
+    end_time_new: {
+      type: String,
+      required: true,
+    },
     shift_hours: {
       type: Number,
       required: true,

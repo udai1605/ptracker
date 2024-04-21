@@ -43,47 +43,56 @@ module.exports = {
     try {
       // Get all entries from timeModel
       const entries = await timeModel.find();
-
       // Array to store bulk update operations
       const bulkUpdateOperations = [];
-      const getTimeDifference = (shiftDate, startTime, endTime) => {
-        // const shiftDate_date = shiftDate.split("T")[0]
-        const startDate = new Date(startTime);
-        const endDate = new Date(endTime);
+      function convertToEasternTime(isoString, referenceDate) {
+        const date = new Date(isoString);
+        const referenceDateObj = new Date(referenceDate);
+        const thresholdDateObj = new Date("2024-04-07T00:00:00.000+00:00");
+        if (referenceDateObj < thresholdDateObj) {
+          // Determine if the provided date is before or after the EDT start (second Sunday in March)
+          const dstStart = new Date(referenceDateObj.getUTCFullYear(), 2, 8); // March 8th in reference year (UTC)
+          const dstEnd = new Date(referenceDateObj.getUTCFullYear(), 10, 1); // November 1st in reference year (UTC)
 
-        // If the shift ends on the next day, add 1 day to the end date
-        if (endDate < startDate) {
-          endDate.setDate(endDate.getDate() + 1);
+          // Calculate the start of EDT (second Sunday in March)
+          dstStart.setUTCDate(dstStart.getUTCDate() + (7 - dstStart.getUTCDay())); // Find the next Sunday after March 8th
+
+          // Determine whether Eastern Time (ET) is observing Daylight Saving Time (EDT)
+          const isDaylightSavingTime = date >= dstStart && date < dstEnd;
+
+          // Define the Eastern Time (ET) offset in milliseconds based on standard time (UTC-5) or daylight saving time (UTC-4)
+          const etOffset = isDaylightSavingTime ? -4 * 60 * 60 * 1000 : -5 * 60 * 60 * 1000;
+
+          // Calculate Eastern Time by adding the offset to the UTC time
+          const easternTime = new Date(date.getTime() + etOffset);
+
+          // Format hours and minutes to HH:mm (add leading zero if necessary)
+          const hours = easternTime.getUTCHours();
+          const minutes = easternTime.getUTCMinutes();
+          const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+          return formattedTime
+        } else {
+          return isoString
         }
-
-        const timeDifferenceInMilliseconds = endDate - startDate;
-        const hours = Math.floor(timeDifferenceInMilliseconds / (1000 * 60 * 60));
-        const minutes = Math.floor(
-          (timeDifferenceInMilliseconds % (1000 * 60 * 60)) / (1000 * 60)
-        );
-
-        return `${hours}:${minutes < 10 ? "0" : ""}${minutes}`;
-      };
-      const timeToDecimal = (time) => {
-        const [hours, minutes] = time?.split(":").map(Number);
-        return hours + minutes / 60;
-      };
+      }
       // Process each entry to calculate and update shift_hours
       entries.forEach(entry => {
         const { date, start_time, end_time } = entry;
 
         // Calculate shift_hours using getTimeDifference function
-        const shiftHours = getTimeDifference(date, start_time, end_time);
+        const start_time_new = convertToEasternTime(start_time, date);
+        const end_time_new = convertToEasternTime(end_time, date);
 
         // Prepare update operation for the current entry
         bulkUpdateOperations.push({
           updateOne: {
             filter: { _id: entry._id }, // Filter by document ID
-            update: { $set: { shift_hours: timeToDecimal(shiftHours) } }, // Set the new value of shift_hours
+            update: { $set: { start_time: start_time_new, end_time: end_time_new } }, // Set the new value of shift_hours
           },
         });
       });
-
+      // console.log(bulkUpdateOperations)
       // Execute bulk update operations
       await timeModel.bulkWrite(bulkUpdateOperations);
 
@@ -229,11 +238,24 @@ module.exports = {
       if (parttime_id) {
         matchStage.$match.parttime_id = mongoose.Types.ObjectId(parttime_id);
       }
+      function getUTCDate(dateStr) {
+        // Split the date string (assumes format DD-MM-YYYY)
+        const [month, day, year] = dateStr.split('-').map(Number);
 
+        // Create a Date object with the given values, interpreted as local time 
+        const localDate = new Date(year, month - 1, day);
+
+        // Create a UTC Date object with 00:00:00 time on that day
+        const utcDate = new Date(Date.UTC(localDate.getUTCFullYear(),
+          localDate.getUTCMonth(),
+          localDate.getUTCDate()));
+
+        return utcDate;
+      }
       if (startDate && endDate) {
         matchStage.$match.date = {
-          $gte: new Date(startDate),
-          $lte: new Date(endDate),
+          $gte: getUTCDate(startDate),
+          $lte: getUTCDate(endDate),
         };
       }
 
@@ -374,6 +396,7 @@ module.exports = {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10; // Default limit is 10
       const { parttime_id, startDate, endDate, companyFilter } = req.query;
+      console.log(req.query)
       const data = await module.exports.fetchTimeStamps(
         user_id,
         parttime_id,

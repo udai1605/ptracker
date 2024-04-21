@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunkpartimetracker=self.webpackChunkpartimetracker||[]).push([[30],{3792:(e,t,a)=>{a.r(t),a.d(t,{default:()=>c});a(5043);var r=a(5650),i=a(579);const n=e=>(0,i.jsx)("div",{children:(0,i.jsx)(r.$,{variant:"outlined",size:"medium",onClick:()=>e.navigate("/addpt"),children:"Add Parttime"})});var s=a(3216);const c=()=>{const e=(0,s.Zp)();return(0,i.jsx)(n,{navigate:e})}}}]);
+//# sourceMappingURL=30.598fec88.chunk.js.map
